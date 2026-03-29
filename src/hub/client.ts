@@ -1,50 +1,88 @@
 /**
  * Hub Bot API 客户端
+ *
+ * 封装与 Hub 的 HTTP 通信，提供发送消息、同步工具定义等能力。
+ * Bot API: POST {hubUrl}/bot/v1/message/send
  */
 
 import type { ToolDefinition } from "./types.js";
 
-interface HubResponse<T = unknown> {
-  ok: boolean;
-  data?: T;
-  error?: string;
-}
-
+/** 发送消息请求参数 */
 export interface SendMessageParams {
-  userId: string;
-  text: string;
-  traceId?: string;
+  /** 目标用户/群组 ID */
+  to: string;
+  /** 消息类型（text / image / file 等） */
+  type: string;
+  /** 消息内容 */
+  content: string;
+  /** 媒体 URL（可选） */
+  url?: string;
+  /** 媒体 base64 数据（可选） */
+  base64?: string;
+  /** 文件名（可选） */
+  filename?: string;
+  /** 链路追踪 ID（可选） */
+  trace_id?: string;
 }
 
-export interface SendMessageResult {
-  messageId: string;
-}
-
+/**
+ * Hub Bot API 客户端
+ * 通过 appToken 认证，向 Hub 发送消息和同步工具
+ */
 export class HubClient {
   private hubUrl: string;
   private appToken: string;
 
   constructor(hubUrl: string, appToken: string) {
+    // 移除末尾斜杠
     this.hubUrl = hubUrl.replace(/\/+$/, "");
     this.appToken = appToken;
   }
 
-  async sendMessage(params: SendMessageParams): Promise<SendMessageResult> {
-    return await this.request<SendMessageResult>("/api/bot/message", {
-      method: "POST",
-      body: { user_id: params.userId, text: params.text, trace_id: params.traceId },
-    });
+  /**
+   * 发送文本消息
+   * @param to 目标用户/群组 ID
+   * @param text 文本内容
+   * @param traceId 可选的追踪 ID
+   */
+  async sendText(to: string, text: string, traceId?: string): Promise<void> {
+    await this.sendMessage({ to, type: "text", content: text, trace_id: traceId });
   }
 
-  async sendTyping(userId: string): Promise<void> {
-    await this.request("/api/bot/typing", { method: "POST", body: { user_id: userId } });
-  }
+  /**
+   * 发送消息（支持媒体类型）
+   * POST {hubUrl}/bot/v1/message/send
+   * body: {to, type, content, url?, base64?, filename?, trace_id?}
+   */
+  async sendMessage(params: SendMessageParams): Promise<void> {
+    const url = `${this.hubUrl}/bot/v1/message/send`;
 
-  async replyToolResult(traceId: string, result: string): Promise<void> {
-    await this.request("/api/bot/tool-result", {
+    const payload: Record<string, string | undefined> = {
+      to: params.to,
+      type: params.type,
+      content: params.content,
+    };
+    if (params.url) payload.url = params.url;
+    if (params.base64) payload.base64 = params.base64;
+    if (params.filename) payload.filename = params.filename;
+    if (params.trace_id) payload.trace_id = params.trace_id;
+
+    const resp = await fetch(url, {
       method: "POST",
-      body: { trace_id: traceId, result },
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${this.appToken}`,
+      },
+      body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(30_000),
     });
+
+    if (!resp.ok) {
+      const errText = await resp.text();
+      throw new Error(
+        `[hub-client] 发送消息失败: ${resp.status} ${resp.statusText} - ${errText}`,
+      );
+    }
   }
 
   /**
@@ -63,42 +101,7 @@ export class HubClient {
     });
     if (!resp.ok) {
       const errText = await resp.text();
-      throw new Error(`syncTools 失败 [${resp.status}]: ${errText}`);
+      console.error(`[hub-client] syncTools 失败 [${resp.status}]: ${errText}`);
     }
-    console.log("[hub-client] syncTools 成功");
-  }
-
-  private async request<T = unknown>(
-    path: string,
-    opts: { method: string; body?: unknown },
-  ): Promise<T> {
-    const url = `${this.hubUrl}${path}`;
-    const headers: Record<string, string> = {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${this.appToken}`,
-    };
-
-    const resp = await fetch(url, {
-      method: opts.method,
-      headers,
-      body: opts.body ? JSON.stringify(opts.body) : undefined,
-    });
-
-    if (!resp.ok) {
-      const errText = await resp.text();
-      throw new Error(`Hub API 请求失败 [${resp.status}] ${path}: ${errText}`);
-    }
-
-    const contentType = resp.headers.get("content-type") || "";
-    if (!contentType.includes("application/json")) {
-      return undefined as T;
-    }
-
-    const json = (await resp.json()) as HubResponse<T>;
-    if (!json.ok) {
-      throw new Error(`Hub API 业务错误 ${path}: ${json.error || "未知错误"}`);
-    }
-
-    return json.data as T;
   }
 }
