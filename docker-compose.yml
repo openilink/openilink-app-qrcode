@@ -1,0 +1,19 @@
+version: "3.8"
+
+services:
+  qrcode:
+    build: .
+    container_name: openilink-app-qrcode
+    restart: unless-stopped
+    ports:
+      - "8093:8093"
+    environment:
+      - HUB_URL=${HUB_URL}
+      - BASE_URL=${BASE_URL}
+      - DB_PATH=/data/qrcode.db
+      - PORT=8093
+    volumes:
+      - qrcode-data:/data
+
+volumes:
+  qrcode-data:
