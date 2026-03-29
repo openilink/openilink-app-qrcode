@@ -5,7 +5,8 @@
 import { generatePKCE } from "../utils/crypto.js";
 import type { Store } from "../store.js";
 import type { Config } from "../config.js";
-import type { Installation } from "./types.js";
+import type { Installation, ToolDefinition } from "./types.js";
+import { HubClient } from "./client.js";
 import type { IncomingMessage, ServerResponse } from "node:http";
 
 const pendingStates = new Map<string, { codeVerifier: string; createdAt: number }>();
@@ -14,6 +15,8 @@ const STATE_TTL_MS = 5 * 60 * 1000;
 export interface OAuthOptions {
   config: Config;
   store: Store;
+  /** 工具定义列表，OAuth 成功后同步到 Hub */
+  tools?: ToolDefinition[];
 }
 
 export function handleOAuthStart(
@@ -87,6 +90,16 @@ export async function handleOAuthCallback(
       createdAt: new Date().toISOString(),
     };
     opts.store.saveInstallation(installation);
+
+    console.log("[oauth] 安装成功:", installation.id);
+
+    // OAuth 成功后同步工具定义到 Hub
+    if (opts.tools && opts.tools.length > 0) {
+      const hubClient = new HubClient(installation.hubUrl, installation.appToken);
+      hubClient.syncTools(opts.tools).catch((err) => {
+        console.error("[oauth] 同步工具定义失败:", err);
+      });
+    }
 
     res.writeHead(200, { "Content-Type": "application/json" });
     res.end(JSON.stringify({ ok: true, installation_id: installation.id }));

@@ -40,15 +40,32 @@ export class HubClient {
     await this.request("/api/bot/typing", { method: "POST", body: { user_id: userId } });
   }
 
-  async registerTools(tools: ToolDefinition[]): Promise<void> {
-    await this.request("/api/bot/tools", { method: "PUT", body: { tools } });
-  }
-
   async replyToolResult(traceId: string, result: string): Promise<void> {
     await this.request("/api/bot/tool-result", {
       method: "POST",
       body: { trace_id: traceId, result },
     });
+  }
+
+  /**
+   * 同步工具定义到 Hub（PUT /bot/v1/app/tools）
+   */
+  async syncTools(tools: ToolDefinition[]): Promise<void> {
+    const url = `${this.hubUrl}/bot/v1/app/tools`;
+    const resp = await fetch(url, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${this.appToken}`,
+      },
+      body: JSON.stringify({ tools }),
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!resp.ok) {
+      const errText = await resp.text();
+      throw new Error(`syncTools 失败 [${resp.status}]: ${errText}`);
+    }
+    console.log("[hub-client] syncTools 成功");
   }
 
   private async request<T = unknown>(

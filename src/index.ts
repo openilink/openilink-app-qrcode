@@ -25,23 +25,22 @@ const { definitions, handlers } = collectAllTools();
 const router = new Router({ definitions, handlers, store });
 console.log(`[app] 已注册 ${definitions.length} 个工具`);
 
-async function onEvent(event: HubEvent): Promise<void> {
-  const subType = event.event?.type;
-  console.log(`[event] 收到事件: type=${subType}, id=${event.event?.id}, trace=${event.trace_id}`);
-  if (!subType) return;
-
-  const installation = store.getInstallation(event.installation_id);
-  if (!installation) { console.warn("[event] 安装实例不存在:", event.installation_id); return; }
-
-  const hubClient = new HubClient(installation.hubUrl, installation.appToken);
-
-  switch (subType) {
-    case "command": { await router.handleAndReply(event, hubClient); break; }
-    default: console.log(`[event] 未处理的事件类型: ${subType}`);
-  }
+/** 获取 HubClient 实例（用于异步回复等场景） */
+function getHubClient(installation: import("./hub/types.js").Installation): HubClient {
+  return new HubClient(installation.hubUrl, installation.appToken);
 }
 
-const oauthOpts = { config, store };
+/**
+ * 处理 command 事件（同步/异步超时由 webhook 层控制）
+ * 返回工具执行结果文本，null 表示无需回复
+ */
+async function onCommand(event: HubEvent, _installation: import("./hub/types.js").Installation): Promise<string | null> {
+  console.log(`[event] 收到 command 事件: id=${event.event?.id}, trace=${event.trace_id}`);
+  const result = await router.handleCommand(event);
+  return result ?? null;
+}
+
+const oauthOpts = { config, store, tools: definitions };
 
 async function requestHandler(req: IncomingMessage, res: ServerResponse): Promise<void> {
   const url = new URL(req.url || "/", `http://${req.headers.host || "localhost"}`);
@@ -49,7 +48,7 @@ async function requestHandler(req: IncomingMessage, res: ServerResponse): Promis
 
   try {
     if (pathname === "/hub/webhook" && req.method === "POST") {
-      await handleWebhook(req, res, { store, onEvent }); return;
+      await handleWebhook(req, res, { store, onCommand, getHubClient }); return;
     }
     if (pathname === "/oauth/setup" && req.method === "GET") {
       handleOAuthStart(req, res, oauthOpts); return;
@@ -87,6 +86,18 @@ const server = createServer((req, res) => {
 
 server.listen(Number(config.port), () => {
   console.log(`[app] 服务已启动，监听端口 ${config.port}`);
+
+  // 启动时同步工具定义到所有已安装的 Hub 实例
+  const installations = store.getAllInstallations();
+  for (const inst of installations) {
+    const hubClient = new HubClient(inst.hubUrl, inst.appToken);
+    hubClient.syncTools(definitions).catch((err) => {
+      console.error(`[app] 启动同步工具失败 (installation=${inst.id}):`, err);
+    });
+  }
+  if (installations.length > 0) {
+    console.log(`[app] 正在向 ${installations.length} 个安装实例同步工具定义`);
+  }
 });
 
 function shutdown(signal: string): void {
