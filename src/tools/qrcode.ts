@@ -42,8 +42,8 @@ const definitions: ToolDefinition[] = [
  * @param size 图片尺寸，默认 300
  * @returns base64 data URL
  */
-export async function generateQRCode(text: string, size: number = 300): Promise<string> {
-  const dataUrl = await QRCode.toDataURL(text, { width: size });
+export async function generateQRCode(text: string, size: number = 800): Promise<string> {
+  const dataUrl = await QRCode.toDataURL(text, { width: size, margin: 2 });
   return dataUrl;
 }
 
@@ -91,7 +91,13 @@ function createHandlers(): Map<string, ToolHandler> {
       const qrSize = size ? Number(size) : 300;
       const dataUrl = await generateQRCode(String(text), qrSize);
 
-      return `📱 二维码已生成（base64 data URL），内容: ${text}\n\n${dataUrl}`;
+      // 返回 ToolResult，Hub 会以图片形式发送给用户
+      return {
+        reply: `📱 二维码已生成，内容: ${text}`,
+        type: "image",
+        base64: dataUrl,
+        name: "qrcode.png",
+      };
     } catch (err: any) {
       return `生成二维码失败：${err.message}`;
     }

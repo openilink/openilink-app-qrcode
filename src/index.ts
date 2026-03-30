@@ -34,7 +34,7 @@ function getHubClient(installation: Installation): HubClient {
  * 处理 command 事件（同步/异步超时由 webhook 层控制）
  * 返回工具执行结果文本，null 表示无需回复
  */
-async function onCommand(event: HubEvent, _installation: Installation): Promise<string | null> {
+async function onCommand(event: HubEvent, _installation: Installation): Promise<string | import("./hub/types.js").ToolResult | null> {
   console.log(`[event] 收到 command 事件: id=${event.event?.id}, trace=${event.trace_id}`);
   const result = await router.handleCommand(event);
   return result ?? null;

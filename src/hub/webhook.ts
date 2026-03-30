@@ -12,7 +12,7 @@
 
 import { verifySignature } from "../utils/crypto.js";
 import type { Store } from "../store.js";
-import type { HubEvent, Installation } from "./types.js";
+import type { HubEvent, Installation, ToolResult } from "./types.js";
 import type { HubClient } from "./client.js";
 import type { IncomingMessage, ServerResponse } from "node:http";
 
@@ -26,7 +26,7 @@ const TIMEOUT_SENTINEL = Symbol("timeout");
 export type CommandHandler = (
   event: HubEvent,
   installation: Installation,
-) => Promise<string | null>;
+) => Promise<string | ToolResult | null>;
 
 /** 获取 HubClient 实例的工厂函数 */
 export type HubClientFactory = (installation: Installation) => HubClient;
@@ -131,13 +131,14 @@ export async function handleWebhook(
           if (typeof raceResult === "string") {
             jsonReply(res, 200, { reply: raceResult });
           } else if (raceResult && typeof raceResult === "object") {
-            // ToolResult 对象，展开字段
+            // ToolResult 对象 → 映射为 Hub 期望的同步回复字段名
+            const tr = raceResult as ToolResult;
             jsonReply(res, 200, {
-              reply: (raceResult as Record<string, unknown>).reply,
-              reply_type: (raceResult as Record<string, unknown>).reply_type,
-              reply_url: (raceResult as Record<string, unknown>).reply_url,
-              reply_base64: (raceResult as Record<string, unknown>).reply_base64,
-              reply_name: (raceResult as Record<string, unknown>).reply_name,
+              reply: tr.reply,
+              reply_type: tr.type,
+              reply_url: tr.url,
+              reply_base64: tr.base64,
+              reply_name: tr.name,
             });
           } else {
             jsonReply(res, 200, { ok: true });
@@ -161,7 +162,14 @@ export async function handleWebhook(
                 "";
               if (to) {
                 try {
-                  await hubClient.sendText(to, asyncResult, event.trace_id);
+                  if (typeof asyncResult === "string") {
+                    await hubClient.sendText(to, asyncResult, event.trace_id);
+                  } else {
+                    await hubClient.sendMessage({
+                      to, type: asyncResult.type || "text", content: asyncResult.reply,
+                      base64: asyncResult.base64, url: asyncResult.url, filename: asyncResult.name, trace_id: event.trace_id,
+                    });
+                  }
                 } catch (err) {
                   console.error("[webhook] 异步推送 command 结果失败:", err);
                 }

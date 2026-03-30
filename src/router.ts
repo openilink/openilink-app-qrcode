@@ -25,7 +25,7 @@ export class Router {
 
   getDefinitions(): ToolDefinition[] { return this.definitions; }
 
-  async handleCommand(event: HubEvent): Promise<string | undefined> {
+  async handleCommand(event: HubEvent): Promise<string | import("./hub/types.js").ToolResult | undefined> {
     if (event.type !== "event" || !event.event || event.event.type !== "command") return undefined;
 
     const eventData = event.event.data;
@@ -64,7 +64,15 @@ export class Router {
     const to = data?.group?.id ?? data?.sender?.id ?? "";
     if (to) {
       try {
-        await hubClient.sendText(to, result, event.trace_id);
+        if (typeof result === "string") {
+          await hubClient.sendText(to, result, event.trace_id);
+        } else {
+          // ToolResult 带媒体
+          await hubClient.sendMessage({
+            to, type: result.type || "text", content: result.reply,
+            base64: result.base64, url: result.url, filename: result.name, trace_id: event.trace_id,
+          });
+        }
       } catch (err) {
         console.error("[Router] 回传工具结果失败:", err);
       }

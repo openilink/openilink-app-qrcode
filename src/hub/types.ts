@@ -101,8 +101,22 @@ export interface ToolContext {
   args: Record<string, any>;
 }
 
-/** AI Tool 处理函数类型 */
-export type ToolHandler = (ctx: ToolContext) => Promise<string>;
+/** AI Tool 执行结果 — 支持纯文本和媒体类型 */
+export interface ToolResult {
+  /** 回复文本（必填） */
+  reply: string;
+  /** 媒体类型: "image" | "video" | "file" */
+  type?: string;
+  /** 媒体 base64 数据（含 data: 前缀） */
+  base64?: string;
+  /** 媒体 URL */
+  url?: string;
+  /** 文件名 */
+  name?: string;
+}
+
+/** AI Tool 处理函数类型 — 返回纯文本或 ToolResult */
+export type ToolHandler = (ctx: ToolContext) => Promise<string | ToolResult>;
 
 /** 工具模块接口（纯 Tools 型） */
 export interface ToolModule {
