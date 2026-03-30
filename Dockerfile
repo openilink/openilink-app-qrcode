@@ -14,19 +14,24 @@ RUN npm run build
 # ─── 运行阶段 ───────────────────────────────────────
 FROM node:20-alpine
 
+RUN addgroup -S app && adduser -S app -G app
+
 WORKDIR /app
 
-RUN apk add --no-cache python3 make g++
-
 COPY package.json package-lock.json* ./
-RUN npm ci --omit=dev && npm cache clean --force
-
-RUN apk del python3 make g++
+RUN apk add --no-cache python3 make g++ \
+    && npm ci --omit=dev \
+    && npm cache clean --force \
+    && apk del python3 make g++
 
 COPY --from=builder /app/dist ./dist
 
+RUN mkdir -p /data && chown -R app:app /data /app
+
+USER app
+
+ENV NODE_ENV=production
 ENV DB_PATH=/data/qrcode.db
-RUN mkdir -p /data
 
 EXPOSE 8093
 
