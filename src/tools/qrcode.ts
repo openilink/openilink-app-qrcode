@@ -14,8 +14,12 @@ const definitions: ToolDefinition[] = [
     description: "生成二维码，将文本或链接编码为二维码图片（返回 base64 data URL）",
     command: "generate_qrcode",
     parameters: {
-      text: { type: "string", description: "要编码的内容", required: true },
-      size: { type: "number", description: "二维码图片尺寸（像素），默认 300" },
+      type: "object",
+      properties: {
+        text: { type: "string", description: "要编码的内容" },
+        size: { type: "number", description: "二维码图片尺寸（像素），默认 300" },
+      },
+      required: ["text"],
     },
   },
   {
@@ -23,7 +27,11 @@ const definitions: ToolDefinition[] = [
     description: "解码二维码，从图片 URL 中识别二维码内容",
     command: "decode_qrcode",
     parameters: {
-      image_url: { type: "string", description: "二维码图片 URL", required: true },
+      type: "object",
+      properties: {
+        image_url: { type: "string", description: "二维码图片 URL" },
+      },
+      required: ["image_url"],
     },
   },
 ];
